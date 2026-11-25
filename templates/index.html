@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI-Based Adaptive Noise Removal for Clear Speech</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="background-glow" aria-hidden="true"></div>
+
+    <header class="hero-header">
+        <div class="container header-content">
+            <div class="badge-row">
+                <span class="tech-badge">PyTorch + Librosa + Flask</span>
+                <span id="healthBadge" class="status-pill status-checking" title="Backend health status">
+                    <span class="status-dot"></span>
+                    <span id="healthText">Checking system...</span>
+                </span>
+            </div>
+            <h1>AI-Based Adaptive Noise Removal for Clear Speech</h1>
+            <p class="hero-subtitle">
+                Upload noisy speech recordings in WAV or MP3 format to suppress background noise,
+                preserve human voice clarity using deep learning speech enhancement, compare waveforms
+                and spectrograms, and download studio-clean WAV audio.
+            </p>
+        </div>
+    </header>
+
+    <main class="container main-grid">
+        <!-- Section 2 & 3: Upload Audio & Processing Controls -->
+        <section class="card upload-card" id="uploadSection">
+            <div class="card-header">
+                <div>
+                    <h2>1. Upload Noisy Audio</h2>
+                    <p class="card-desc">Supports <code>.wav</code> and <code>.mp3</code> recordings (up to 50 MB).</p>
+                </div>
+                <span class="step-chip">Input</span>
+            </div>
+
+            <form id="uploadForm" novalidate>
+                <div class="drop-zone" id="dropZone" tabindex="0" role="button" aria-label="Choose or drop an audio file">
+                    <input type="file" id="audioFileInput" name="audio" accept=".wav,.mp3,audio/wav,audio/mpeg" hidden>
+                    <div class="drop-zone-icon" aria-hidden="true">
+                        <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                            <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                            <line x1="12" y1="19" x2="12" y2="23"></line>
+                            <line x1="8" y1="23" x2="16" y2="23"></line>
+                        </svg>
+                    </div>
+                    <p class="drop-zone-title">Drag &amp; drop your noisy audio file here</p>
+                    <p class="drop-zone-hint">or <span class="browse-link">browse from your computer</span></p>
+                </div>
+
+                <!-- Optional clean reference file for objective SNR calculation -->
+                <details class="optional-ref-box">
+                    <summary>Optional: Provide a clean reference signal (for exact SNR evaluation)</summary>
+                    <div class="ref-input-row">
+                        <input type="file" id="referenceFileInput" name="reference" accept=".wav,.mp3,audio/wav,audio/mpeg">
+                        <button type="button" id="clearRefBtn" class="btn btn-ghost btn-sm">Clear</button>
+                    </div>
+                    <p class="ref-note">
+                        Signal-to-Noise Ratio (SNR) requires a ground-truth clean reference recording.
+                        If omitted, the app reports estimated noise reduction without fabricating SNR.
+                    </p>
+                </details>
+
+                <div class="file-meta-grid hidden" id="uploadMetaBox">
+                    <div class="meta-item">
+                        <span class="meta-label">Uploaded Filename</span>
+                        <span class="meta-value" id="metaFilename">—</span>
+                    </div>
+                    <div class="meta-item">
+                        <span class="meta-label">Original Duration</span>
+                        <span class="meta-value" id="metaDuration">—</span>
+                    </div>
+                    <div class="meta-item">
+                        <span class="meta-label">Sample Rate</span>
+                        <span class="meta-value" id="metaSampleRate">—</span>
+                    </div>
+                    <div class="meta-item">
+                        <span class="meta-label">File Size</span>
+                        <span class="meta-value" id="metaFileSize">—</span>
+                    </div>
+                </div>
+
+                <!-- Section 3: Audio Processing Controls -->
+                <div class="controls-bar">
+                    <div class="mode-selector">
+                        <label for="methodSelect">Enhancement Engine</label>
+                        <select id="methodSelect" name="method">
+                            <option value="auto">Auto (Best Available AI Model)</option>
+                            <option value="deep_learning">Deep Learning Speech Enhancer (PyTorch)</option>
+                            <option value="spectral_gating">Adaptive Spectral Gating (Librosa / NoiseReduce)</option>
+                        </select>
+                    </div>
+
+                    <div class="action-buttons">
+                        <button type="button" id="uploadBtn" class="btn btn-secondary">
+                            Upload Audio
+                        </button>
+                        <button type="button" id="processBtn" class="btn btn-primary" disabled>
+                            <span class="btn-spinner hidden" id="processSpinner"></span>
+                            <span id="processBtnText">Remove Background Noise</span>
+                        </button>
+                    </div>
+                </div>
+            </form>
+
+            <div class="status-banner hidden" id="statusBanner" role="status" aria-live="polite"></div>
+        </section>
+
+        <!-- Section 4 & 5: Audio Playback Comparison -->
+        <section class="card playback-card" id="playbackSection">
+            <div class="card-header">
+                <div>
+                    <h2>2. Audio Playback &amp; Comparison</h2>
+                    <p class="card-desc">Listen to the original noisy recording and compare it with the AI-enhanced speech.</p>
+                </div>
+                <span class="step-chip">Listen</span>
+            </div>
+
+            <div class="players-grid">
+                <div class="player-box">
+                    <div class="player-header">
+                        <span class="player-tag tag-noisy">Original Noisy Audio</span>
+                        <span class="player-duration" id="origPlayerDuration">No file loaded</span>
+                    </div>
+                    <audio id="originalAudioPlayer" controls preload="metadata"></audio>
+                </div>
+
+                <div class="player-box player-box-enhanced">
+                    <div class="player-header">
+                        <span class="player-tag tag-clean">Enhanced Clean Speech</span>
+                        <span class="player-duration" id="enhPlayerDuration">Waiting for processing</span>
+                    </div>
+                    <audio id="enhancedAudioPlayer" controls preload="metadata"></audio>
+                </div>
+            </div>
+
+            <!-- Section 9: Download Clean Audio -->
+            <div class="download-row">
+                <div class="download-info">
+                    <span class="download-title">Ready to export clean speech?</span>
+                    <span class="download-sub" id="downloadSubtext">Process an audio file to enable WAV download.</span>
+                </div>
+                <a id="downloadBtn" class="btn btn-download disabled" href="#" aria-disabled="true" download>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                    <span>Download Clean WAV</span>
+                </a>
+            </div>
+        </section>
+
+        <!-- Section 8: Performance Metrics -->
+        <section class="card metrics-card" id="metricsSection">
+            <div class="card-header">
+                <div>
+                    <h2>3. Performance Analysis</h2>
+                    <p class="card-desc">Real measurements computed directly from the uploaded and enhanced audio signals.</p>
+                </div>
+                <span class="step-chip">Metrics</span>
+            </div>
+
+            <div class="metrics-grid">
+                <div class="metric-tile">
+                    <span class="metric-label">Original Duration</span>
+                    <span class="metric-value" id="metricOrigDuration">—</span>
+                </div>
+                <div class="metric-tile">
+                    <span class="metric-label">Enhanced Duration</span>
+                    <span class="metric-value" id="metricEnhDuration">—</span>
+                </div>
+                <div class="metric-tile">
+                    <span class="metric-label">Processing Time</span>
+                    <span class="metric-value" id="metricProcTime">—</span>
+                </div>
+                <div class="metric-tile">
+                    <span class="metric-label">Est. Noise Reduction</span>
+                    <span class="metric-value" id="metricNoiseReduction">—</span>
+                </div>
+                <div class="metric-tile">
+                    <span class="metric-label">SNR (Before → After)</span>
+                    <span class="metric-value" id="metricSnr">—</span>
+                    <span class="metric-footnote" id="metricSnrNote">Upload a clean reference file for SNR</span>
+                </div>
+                <div class="metric-tile">
+                    <span class="metric-label">Model / Method Used</span>
+                    <span class="metric-value metric-value-sm" id="metricMethod">—</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 6: Waveform Comparison -->
+        <section class="card visual-card" id="waveformSection">
+            <div class="card-header">
+                <div>
+                    <h2>4. Waveform Comparison</h2>
+                    <p class="card-desc">Amplitude over time before and after adaptive noise suppression.</p>
+                </div>
+                <span class="step-chip">Time Domain</span>
+            </div>
+
+            <div class="visual-grid">
+                <div class="visual-panel">
+                    <h3>Original Audio Waveform</h3>
+                    <div class="plot-frame" id="origWaveformFrame">
+                        <p class="plot-placeholder">Process audio to generate original waveform</p>
+                        <img id="origWaveformImg" class="hidden" alt="Original audio waveform plot">
+                    </div>
+                </div>
+                <div class="visual-panel">
+                    <h3>Enhanced Audio Waveform</h3>
+                    <div class="plot-frame" id="enhWaveformFrame">
+                        <p class="plot-placeholder">Process audio to generate enhanced waveform</p>
+                        <img id="enhWaveformImg" class="hidden" alt="Enhanced audio waveform plot">
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 7: Spectrogram Comparison -->
+        <section class="card visual-card" id="spectrogramSection">
+            <div class="card-header">
+                <div>
+                    <h2>5. Spectrogram Comparison</h2>
+                    <p class="card-desc">Time-frequency energy distribution (dB) highlighting background noise attenuation.</p>
+                </div>
+                <span class="step-chip">Frequency Domain</span>
+            </div>
+
+            <div class="visual-grid">
+                <div class="visual-panel">
+                    <h3>Original Audio Spectrogram</h3>
+                    <div class="plot-frame" id="origSpecFrame">
+                        <p class="plot-placeholder">Process audio to generate original spectrogram</p>
+                        <img id="origSpecImg" class="hidden" alt="Original audio spectrogram plot">
+                    </div>
+                </div>
+                <div class="visual-panel">
+                    <h3>Enhanced Audio Spectrogram</h3>
+                    <div class="plot-frame" id="enhSpecFrame">
+                        <p class="plot-placeholder">Process audio to generate enhanced spectrogram</p>
+                        <img id="enhSpecImg" class="hidden" alt="Enhanced audio spectrogram plot">
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 10: About the Project -->
+        <section class="card about-card" id="aboutSection">
+            <div class="card-header">
+                <div>
+                    <h2>About the Project</h2>
+                    <p class="card-desc">Architecture and signal processing pipeline behind this AIDL speech enhancement dashboard.</p>
+                </div>
+                <span class="step-chip">Architecture</span>
+            </div>
+
+            <div class="about-grid">
+                <div class="about-block">
+                    <h3>How It Works</h3>
+                    <p>
+                        Incoming WAV or MP3 recordings are decoded, converted to mono at the model's target
+                        sample rate, and analyzed in both time and frequency domains. The deep learning
+                        speech enhancement pipeline suppresses stationary and non-stationary background noise
+                        while preserving vocal harmonics and natural speech intelligibility.
+                    </p>
+                </div>
+                <div class="about-block">
+                    <h3>Deep Learning &amp; Signal Pipeline</h3>
+                    <ul>
+                        <li><strong>Pre-processing:</strong> Resampling, peak normalization, and STFT framing via Librosa &amp; PyTorch.</li>
+                        <li><strong>AI Noise Suppression:</strong> Pretrained neural denoiser / PyTorch adaptive spectral masking, with Librosa + Spectral Gating fallback.</li>
+                        <li><strong>Evaluation &amp; Visuals:</strong> Honest duration, processing latency, noise-floor reduction in dB, optional reference SNR, and Matplotlib plots.</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="app-footer">
+        <div class="container">
+            <p>AI-Based Adaptive Noise Removal for Clear Speech &bull; Built with Python, PyTorch, Librosa &amp; Flask</p>
+        </div>
+    </footer>
+
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html>

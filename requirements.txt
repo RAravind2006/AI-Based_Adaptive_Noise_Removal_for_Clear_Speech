@@ -1,0 +1,11 @@
+flask>=3.0.0
+torch>=2.1.0
+torchaudio>=2.1.0
+denoiser>=0.1.5
+librosa>=0.10.2
+soundfile>=0.12.1
+noisereduce>=3.0.0
+matplotlib>=3.8.0
+numpy>=1.24.0
+scipy>=1.11.0
+pytest>=8.0.0
